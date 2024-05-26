@@ -346,10 +346,10 @@ local function moveShiftContainer(scriptEditor)
 	shiftContainer.Position = UDim2.new(0, -scriptEditor.ScrollingShift, 0, 0)
 end
 
-local function updateLines(scriptEditor)
+local function updateSyntaxHighlighting(scriptEditor)
 	local lineNumbers = {}
 
-	local visibleCodeLines = {}
+	local visibleCodeLines = table.create(scriptEditor.VisibleLines)
 	table.move(scriptEditor.SourceData.Code, scriptEditor.LineFocused, scriptEditor.LineFocused + scriptEditor.VisibleLines, 1, visibleCodeLines)
 
 	for i = 1, scriptEditor.VisibleLines + 1 do
@@ -378,8 +378,9 @@ local function onCodeFieldEdit(scriptEditor)
 	local background = scriptEditor.Background
 	local codeField = background.CodeField
 
-	local newText = codeField.Text
-	local lines = string.split(newText, "\n")
+	local lines = table.create(scriptEditor.VisibleLines)
+	table.move(string.split(codeField.Text, "\n"), scriptEditor.LineFocused, scriptEditor.LineFocused + scriptEditor.VisibleLines, 1, lines)
+	local newText = table.concat(lines, "\n")
 
 	local finalRawCode = newText
 
@@ -389,22 +390,20 @@ local function onCodeFieldEdit(scriptEditor)
 		background.LineNumberBackground.Size = UDim2.new(0, lineNumberWidth + 6, 1, 0)
 
 		codeField.Position = UDim2.new(0, lineNumberWidth + 9, 0, 5)
-		codeField.Size = UDim2.new(1, -(lineNumberWidth + 9 + 5), 1, -10)
 
 		background.RichOverlayContainer.Position = UDim2.new(0, lineNumberWidth + 9, 0, 5)
 		background.RichOverlayContainer.Size = UDim2.new(1, -(lineNumberWidth + 9 + 5), 1, -10)
 
 		declareCurrentTextSize(scriptEditor, 7)
 	end)
-
-	local luaArray = string.split(newText--[[spacesToTabs(newText)]], "\n")
-	scriptEditor.SourceData:Write(scriptEditor.LineFocused, scriptEditor.VisibleLines, luaArray)
+	
+	scriptEditor.SourceData:Write(scriptEditor.LineFocused, scriptEditor.VisibleLines, lines)
 	scriptEditor.RawSource = scriptEditor.SourceData:ToString()
 
-	updateLines(scriptEditor)
+	updateSyntaxHighlighting(scriptEditor)
 
-	local originalSize = scriptEditor.VisibleLines
-	finalRawCode = fixCodeFieldLines(scriptEditor, #lines)
+	-- TODO: what does this do??
+	-- finalRawCode = fixCodeFieldLines(scriptEditor, #lines)
 
 	local hookModules = script.Hooks:GetChildren()
 
@@ -436,7 +435,7 @@ local function onCodeFieldEdit(scriptEditor)
 		local prevPosition = codeField.CursorPosition
 		codeField.CursorPosition = -1
 
-		codeField.Text = finalRawCode
+		codeField.Text = scriptEditor.RawSource
 		codeField.CursorPosition = prevPosition + data.Cursor
 	else
 		scriptEditor.OnEdit:Fire(scriptEditor.RawSource)
@@ -603,7 +602,17 @@ function OdeScriptEditor.Embed(frame: GuiBase2d)
 	end)
 
 	codeField:GetPropertyChangedSignal("CursorPosition"):Connect(function()
-		task.defer(moveShiftContainer, scriptEditor)
+		if codeField:IsFocused() then
+			local cursorLinePosition = GetTextBoxScrolling.GetLinePosition(codeField, codeField.CursorPosition)
+			if cursorLinePosition < scriptEditor.LineFocused then
+				scriptEditor.LineFocused = cursorLinePosition
+			elseif cursorLinePosition > scriptEditor.LineFocused + scriptEditor.VisibleLines then
+				scriptEditor.LineFocused += cursorLinePosition - (scriptEditor.LineFocused + scriptEditor.VisibleLines)
+			end
+
+			updateSyntaxHighlighting(scriptEditor)
+			task.defer(moveShiftContainer, scriptEditor)
+		end
 	end)
 
 	background:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
@@ -612,7 +621,7 @@ function OdeScriptEditor.Embed(frame: GuiBase2d)
 		recountVisibleLines(scriptEditor)
 		codeField.Text = fixCodeFieldLines(scriptEditor, originalSize)
 
-		updateLines(scriptEditor)
+		updateSyntaxHighlighting(scriptEditor)
 
 		task.defer(moveShiftContainer, scriptEditor)
 	end)

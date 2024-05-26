@@ -48,6 +48,14 @@ end
 
 local GetTextBoxScrolling = {}
 
+function GetTextBoxScrolling.GetLinePosition(textLabel: TextBox, cursorPosition: number, previousLinePosition): number
+	local _, multilinePositions = getMultiLinePositions(textLabel.Text)
+	local linePosition, _ = getLinePosition(multilinePositions, cursorPosition)
+
+	return linePosition
+end
+
+
 function GetTextBoxScrolling.UpdateShift(textLabel: TextBox, cursorPosition, shift)
 	if cursorPosition == -1 then
 		return 0
